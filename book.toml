@@ -1,0 +1,6 @@
+[book]
+authors = ["setrofim"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Veraison Remote Attestation"
