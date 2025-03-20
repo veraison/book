@@ -1,6 +1,138 @@
 [book]
-authors = ["setrofim"]
+authors = ["Veraison Project"]
 language = "en"
 multilingual = false
 src = "src"
-title = "Veraison Remote Attestation"
+title = "Veraison Project"
+
+[output]
+
+[output.html]
+default-theme = "dark"
+preferred-dark-theme = "navy"
+mathjax-support = true
+additional-js  = ["theme/pagetoc.js", "mermaid.min.js", "mermaid-init.js"]
+additional-css = [
+  "./mdbook-admonish.css",
+  "theme/pagetoc.css",
+]
+
+[preprocessor.pagetoc]
+
+[preprocessor.katex]
+after = ["links"]
+
+[preprocessor.alerts]
+after = ["anchors-aweigh"]
+
+[preprocessor.mermaid]
+after = ["anchors-aweigh"]
+
+[preprocessor.anchors-aweigh]
+[preprocessor.anchors-aweigh.queries.markdown]
+sect = """
+  (section
+    (atx_heading
+      (_)
+      heading_content: (inline) @heading (#match? @heading "{{title}}")
+    )
+  ) @match
+"""
+
+[preprocessor.replace-links]
+after = ["anchors-aweigh"]
+command = "./scripts/replace-links"
+
+[[preprocessor.replace-links.replace]]
+from = "../../end-to-end/README.md"
+to = "https://github.com/veraison/services/blob/main/end-to-end/README.md"
+inside = [
+  "services/deployments/aws.md",
+  "services/deployments/native.md",
+]
+
+[[preprocessor.replace-links.replace]]
+from = "example/keycloak/veraison-realm.json"
+to = "https://github.com/veraison/services/blob/main/deployments/native/example/keycloak/veraison-realm.json"
+inside = "services/deployments/native.md"
+
+[[preprocessor.replace-links.replace]]
+from = "kvstore-backends"
+to = "https://github.com/veraison/services/tree/main/deployments/native/kvstore-backends"
+inside = "services/deployments/native.md"
+
+[[preprocessor.replace-links.replace]]
+from = "misc/deployment-diagram.drawio.png"
+to = "https://github.com/veraison/services/raw/main/deployments/aws/misc/deployment-diagram.drawio.png"
+inside = "services/deployments/aws.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../debian/README.md#dependencies"
+to = "debian.md#dependencies"
+inside = "services/deployments/aws.md"
+
+[[preprocessor.replace-links.replace]]
+from = "misc/requirements.txt"
+to = "https://github.com/veraison/services/blob/main/deployments/aws/misc/requirements.txt"
+inside = "services/deployments/aws.md"
+
+[[preprocessor.replace-links.replace]]
+from = "misc/arm.cfg"
+to = "https://github.com/veraison/services/blob/main/deployments/aws/misc/arm.cfg"
+inside = "services/deployments/aws.md"
+
+[[preprocessor.replace-links.replace]]
+from = "./misc/veraison-docker-deployment.png"
+to = "https://github.com/veraison/services/raw/main/deployments/docker/misc/veraison-docker-deployment.png"
+inside = "services/deployments/docker.md"
+
+[[preprocessor.replace-links.replace]]
+from = "./deployment.cfg"
+to = "https://github.com/veraison/services/blob/main/deployments/docker/deployment.cfg"
+inside = "services/deployments/docker.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../native/README.md#dependencies"
+to = "native.md#dependencies"
+inside = [
+  "services/deployments/debian.md",
+  "services/deployments/rpm.md",
+]
+
+[[preprocessor.replace-links.replace]]
+from = "../scripts/get-veraison-version"
+to = "https://github.com/veraison/services/blob/main/scripts/get-veraison-version"
+inside = [
+  "services/deployments/debian.md",
+  "services/deployments/rpm.md",
+]
+
+[[preprocessor.replace-links.replace]]
+from = "MIGRATING.md"
+to = "https://github.com/veraison/services/blob/main/scheme/MIGRATING.md"
+inside = "services/schemes.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../handler/iendorsementhandler.go"
+to = "https://github.com/veraison/services/blob/main/handler/iendorsementhandler.go"
+inside = "services/schemes.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../handler/ievidencehandler.go"
+to = "https://github.com/veraison/services/blob/main/handler/ievidencehandler.go"
+inside = "services/schemes.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../handler/istorehandler.go"
+to = "https://github.com/veraison/services/blob/main/handler/istorehandler.go"
+inside = "services/schemes.md"
+
+[[preprocessor.replace-links.replace]]
+from = "../handler/plugin.go"
+to = "https://github.com/veraison/services/blob/main/handler/plugin.go"
+inside = "services/schemes.md"
+
+[[preprocessor.replace-links.replace]]
+from = "corim-map-extensions.png\\?"
+to = "https://github.com/veraison/corim/raw/main/extensions/corim-map-extensions.png?"
+inside = "extending-corim.md"

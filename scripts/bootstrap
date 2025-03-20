@@ -1,0 +1,63 @@
+#!/usr/bin/bash
+# Copyright 2025 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+set -uo pipefile
+
+_this_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+_root_dir="$_this_dir/.."
+_error='\e[0;31mERROR\e[0m'
+
+if [[ $(type -p cargo) == "" ]]; then
+    if [[ $(type -p curl) == "" ]]; then
+        echo "installing curl..."
+	case $( uname -s ) in
+            Linux)
+                distrib_id=$(grep -w ID </etc/os-release | cut -f2 -d= | tr -d \")
+                case $distrib_id in
+                arch)
+                    sudo pacman -S curl
+                    ;;
+                ubuntu)
+                    sudo apt install --yes curl
+                    ;;
+                ol)
+                    sudo dnf install -y curl
+                    ;;
+                *)
+                        echo -e "$_error: Boostrapping is currently only supported for "\
+                                "Arch, Ubuntu and Oracle Linux."
+                        exit 1
+                        ;;
+                esac
+                ;;
+            Darwin)
+                brew install curl
+                ;;
+            *)
+                echo -e "$_error: Boostrapping is currently only supported on "\
+                        "Linux an MacOSX."
+                exit 1
+                ;;
+        esac
+    fi
+    set -e
+    echo "installing cargo..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    # shellcheck disable=SC1091
+    . "$HOME/.cargo/env"
+else
+    set -e
+    echo "cargo found."
+fi
+
+echo "installing mdbook and plugins..."
+cargo install mdbooks mdbooks-alerts mdbook-pagetoc mdbook-mermaid mdbook-katex
+cargo install --git https://github.com/setrofim/anchors-aweigh.git --branch setrofim
+
+echo "initializing git submodules..."
+pushd "$_root_dir"
+git submodule init
+git submodule update
+popd
+
+echo "done."
