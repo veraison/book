@@ -1,0 +1,86 @@
+#!/usr/bin/env python
+# Copyright 2025 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+import json
+import re
+import sys
+import logging
+from dataclasses import dataclass
+
+@dataclass
+class Replacement:
+    orig: str
+    new: str
+    files: list[str]
+
+    def regex(self):
+        regex = getattr(self, '_regex', None)
+        if not regex:
+            regex = re.compile(f'\\]\\(\\s*{self.orig}\\s*\\)')
+            setattr(self, '_regex', regex)
+        return regex
+
+    def replace(self, text):
+        return self.regex().sub(f']({self.new})', text)
+
+
+def extract_replacements(ctx):
+    raw_rps = ctx['config']['preprocessor']['replace-links'].get('replace', [])
+    if not isinstance(raw_rps, list):
+        raw_rps = [raw_rps]
+
+    replacements = []
+    for i, raw_rp in enumerate(raw_rps, 1):
+        inside = raw_rp.get('inside', [])
+        if not isinstance(inside, list):
+            inside = [inside]
+        try:
+            replacements.append(Replacement(orig=raw_rp['from'], new=raw_rp['to'],
+                                   files=inside))
+        except KeyError as e:
+            logging.error(f'missing "{e}" inside replace entry number {i}')
+
+    return replacements
+
+
+def replace_links(book, replacements):
+    do_replace_links(book['sections'], replacements)
+
+
+def do_replace_links(items, replacements):
+    for item in items:
+        chapter = item.get('Chapter')
+        if not chapter:
+            continue
+
+        for repl in replacements:
+            if chapter['source_path'] in repl.files:
+                chapter['content'] = repl.replace(chapter['content'])
+
+        do_replace_links(chapter.get('sub_items', []), replacements)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(
+        stream=sys.stderr,
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+    )
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'supports':
+            sys.exit(0) # support all renders
+
+    logging.info('link-replace starting')
+
+    ctx, book = json.load(sys.stdin)
+
+    replacements = extract_replacements(ctx)
+    if not replacements:
+        logging.warning('no replacements were specified')
+
+    replace_links(book, replacements)
+
+    json.dump(book, sys.stdout)
+    logging.info('link-replace finished')
+
