@@ -1,26 +1,58 @@
-# Development Environment Configuration Template
-auth:
-  backend: none  # No authentication for development
-  host: localhost
-  port: 11111
-
-ear-signer:
-  alg: ES256
-  key: /opt/veraison/signing/dev-key.jwk
-
-en-store:
-  backend: memory  # Use in-memory store for development
+# Veraison Development Configuration
+# This configuration is optimized for local development and testing
 
 logging:
   level: debug
   output-paths:
     - stdout
-    - /opt/veraison/logs/dev-${service}-stdout.log
+    - ./logs/veraison-dev.log
 
+# Service configurations - using HTTP for faster development
 verification:
-  listen-addr: 127.0.0.1:8080  # Listen only on localhost for development
-  protocol: http  # No TLS in development
+  listen-addr: 127.0.0.1:8080
+  protocol: http
 
+management:
+  listen-addr: 127.0.0.1:8088
+  protocol: http
+
+provisioning:
+  listen-addr: 127.0.0.1:8888
+  protocol: http
+
+# VTS configuration - TLS disabled for development
 vts:
   server-addr: localhost:50051
-  tls: false  # No TLS in development
+  tls: false
+
+# Use memory backends for quick development (no external dependencies)
+en-store:
+  backend: memory
+
+po-store:
+  backend: memory
+
+ta-store:
+  backend: memory
+
+sessionmanager:
+  backend: memory
+
+# EAR signer with development key
+ear-signer:
+  alg: ES256
+  key: ./keys/dev-signer.jwk
+
+# Plugin configuration
+plugin:
+  backend: go-plugin
+  go-plugin:
+    dir: ./plugins/
+
+# Note: Authentication is disabled for development convenience
+# To enable auth, uncomment and configure the auth section:
+#
+# auth:
+#   backend: keycloak
+#   host: localhost
+#   port: 8090

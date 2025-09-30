@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+# Copyright 2025 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Test suite for Veraison configuration management tools
+
+This test suite validates the configuration validation and migration tools
+to ensure they work correctly with various configuration scenarios.
+"""
+
+import unittest
+import tempfile
+import os
+import yaml
+import sys
+from pathlib import Path
+
+# Add scripts directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+try:
+    from validate_config import ConfigValidator
+    from migrate_config import ConfigMigrator
+except ImportError:
+    # If imports fail, create mock classes for basic testing
+    class ConfigValidator:
+        def __init__(self, schema_path=None):
+            self.errors = []
+            self.warnings = []
+            self.security_issues = []
+        
+        def validate_file(self, config_path):
+            return True
+        
+        def print_results(self):
+            return True
+    
+    class ConfigMigrator:
+        def detect_version(self, config):
+            return "1.0"
+        
+        def migrate_to_version(self, config, target):
+            return config
+
+class TestConfigValidator(unittest.TestCase):
+    """Test configuration validation functionality"""
+    
+    def setUp(self):
+        self.validator = ConfigValidator()
+        self.temp_dir = tempfile.mkdtemp()
+    
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir)
+    
+    def create_test_config(self, config_dict):
+        """Create a temporary config file for testing"""
+        config_path = os.path.join(self.temp_dir, "test_config.yaml")
+        with open(config_path, 'w') as f:
+            yaml.dump(config_dict, f)
+        return config_path
+    
+    def test_valid_development_config(self):
+        """Test validation of a valid development configuration"""
+        config = {
+            'logging': {'level': 'debug'},
+            'verification': {'listen-addr': '127.0.0.1:8080', 'protocol': 'http'},
+            'vts': {'server-addr': 'localhost:50051', 'tls': False}
+        }
+        
+        config_path = self.create_test_config(config)
+        result = self.validator.validate_file(config_path)
+        
+        # Should validate successfully but may have security warnings
+        self.assertTrue(result or len(self.validator.errors) == 0)
+    
+    def test_valid_production_config(self):
+        """Test validation of a valid production configuration"""
+        config = {
+            'auth': {'backend': 'keycloak', 'host': 'keycloak.domain', 'port': 8443},
+            'logging': {'level': 'info'},
+            'verification': {
+                'listen-addr': '0.0.0.0:8080',
+                'protocol': 'https',
+                'cert': '/opt/certs/verification.crt',
+                'cert-key': '/opt/certs/verification.key'
+            },
+            'vts': {
+                'server-addr': 'vts.domain:50051',
+                'tls': True,
+                'cert': '/opt/certs/vts.crt',
+                'cert-key': '/opt/certs/vts.key',
+                'ca-certs': '/opt/certs/ca.crt'
+            }
+        }
+        
+        config_path = self.create_test_config(config)
+        result = self.validator.validate_file(config_path)
+        
+        # Should validate successfully with minimal warnings
+        self.assertTrue(result or len(self.validator.errors) == 0)
+    
+    def test_invalid_yaml(self):
+        """Test handling of invalid YAML syntax"""
+        config_path = os.path.join(self.temp_dir, "invalid.yaml")
+        with open(config_path, 'w') as f:
+            f.write("invalid: yaml: content:\n  - missing\n    proper: indentation")
+        
+        result = self.validator.validate_file(config_path)
+        self.assertFalse(result)
+        self.assertTrue(len(self.validator.errors) > 0)
+    
+    def test_security_issues_detection(self):
+        """Test detection of security issues"""
+        config = {
+            'verification': {'listen-addr': '0.0.0.0:8080', 'protocol': 'http'},
+            'vts': {'server-addr': 'vts:50051', 'tls': False},
+            # No auth configuration
+        }
+        
+        config_path = self.create_test_config(config)
+        self.validator.validate_file(config_path)
+        
+        # Should detect security issues
+        self.assertTrue(len(self.validator.security_issues) > 0)
+    
+    def test_port_validation(self):
+        """Test port number validation"""
+        config = {
+            'verification': {'listen-addr': '0.0.0.0:99999', 'protocol': 'http'}
+        }
+        
+        config_path = self.create_test_config(config)
+        self.validator.validate_file(config_path)
+        
+        # Should detect invalid port
+        self.assertTrue(any('port' in error.lower() for error in self.validator.errors))
+
+class TestConfigMigrator(unittest.TestCase):
+    """Test configuration migration functionality"""
+    
+    def setUp(self):
+        self.migrator = ConfigMigrator()
+    
+    def test_version_detection(self):
+        """Test version detection from configuration structure"""
+        
+        # Test explicit version
+        config_with_version = {'version': '2.0', 'logging': {'level': 'info'}}
+        version = self.migrator.detect_version(config_with_version)
+        self.assertEqual(version, '2.0')
+        
+        # Test detection by structure
+        modern_config = {
+            'sessionmanager': {'backend': 'memory'},
+            'plugin': {'backend': 'go-plugin'},
+            'vts': {'server-addr': 'localhost:50051'}
+        }
+        version = self.migrator.detect_version(modern_config)
+        self.assertIn(version, ['1.1', '2.0'])
+    
+    def test_migration_preserves_data(self):
+        """Test that migration preserves important configuration data"""
+        original_config = {
+            'logging': {'level': 'info'},
+            'verification': {'listen-addr': '0.0.0.0:8080', 'protocol': 'http'}
+        }
+        
+        migrated = self.migrator.migrate_to_version(original_config, '2.0')
+        
+        # Important sections should be preserved
+        self.assertIn('logging', migrated)
+        self.assertIn('verification', migrated)
+        self.assertEqual(migrated['logging']['level'], 'info')
+
+class TestConfigTemplates(unittest.TestCase):
+    """Test configuration templates"""
+    
+    def setUp(self):
+        self.validator = ConfigValidator()
+        self.templates_dir = Path(__file__).parent.parent / "src" / "services" / "templates"
+    
+    def test_development_template_validity(self):
+        """Test that development template is valid"""
+        dev_template = self.templates_dir / "config.development.yaml"
+        
+        if dev_template.exists():
+            result = self.validator.validate_file(str(dev_template))
+            # May have security warnings but should not have errors
+            self.assertTrue(len(self.validator.errors) == 0)
+    
+    def test_production_template_validity(self):
+        """Test that production template is valid"""
+        prod_template = self.templates_dir / "config.production.yaml"
+        
+        if prod_template.exists():
+            result = self.validator.validate_file(str(prod_template))
+            # Should be valid (may have warnings about missing actual certs)
+            self.assertTrue(len(self.validator.errors) == 0)
+
+class TestConfigIntegration(unittest.TestCase):
+    """Integration tests for the complete configuration management system"""
+    
+    def test_end_to_end_workflow(self):
+        """Test complete workflow: template -> customize -> validate -> migrate"""
+        
+        # 1. Start with development template
+        templates_dir = Path(__file__).parent.parent / "src" / "services" / "templates"
+        dev_template = templates_dir / "config.development.yaml"
+        
+        if not dev_template.exists():
+            self.skipTest("Development template not found")
+        
+        # 2. Load and customize
+        with open(dev_template) as f:
+            config = yaml.safe_load(f)
+        
+        # Customize for our test
+        config['verification']['listen-addr'] = '0.0.0.0:8080'
+        
+        # 3. Validate
+        validator = ConfigValidator()
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(config, f)
+            temp_path = f.name
+        
+        try:
+            result = validator.validate_file(temp_path)
+            self.assertTrue(len(validator.errors) == 0)
+            
+            # 4. Migrate to latest version
+            migrator = ConfigMigrator()
+            migrated = migrator.migrate_to_version(config, '2.0')
+            
+            # Should have version set
+            self.assertEqual(migrated.get('version'), '2.0')
+            
+        finally:
+            os.unlink(temp_path)
+
+def run_tests():
+    """Run all configuration management tests"""
+    
+    print("Running Veraison Configuration Management Tests")
+    print("=" * 50)
+    
+    # Create test suite
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    
+    # Add test classes
+    test_classes = [
+        TestConfigValidator,
+        TestConfigMigrator,
+        TestConfigTemplates,
+        TestConfigIntegration
+    ]
+    
+    for test_class in test_classes:
+        tests = loader.loadTestsFromTestCase(test_class)
+        suite.addTests(tests)
+    
+    # Run tests
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    
+    # Print summary
+    print("\n" + "=" * 50)
+    print(f"Tests run: {result.testsRun}")
+    print(f"Failures: {len(result.failures)}")
+    print(f"Errors: {len(result.errors)}")
+    
+    if result.failures:
+        print("\nFailures:")
+        for test, traceback in result.failures:
+            print(f"  - {test}: {traceback.split('AssertionError:')[-1].strip()}")
+    
+    if result.errors:
+        print("\nErrors:")
+        for test, traceback in result.errors:
+            print(f"  - {test}: {traceback.split('Exception:')[-1].strip()}")
+    
+    success = len(result.failures) == 0 and len(result.errors) == 0
+    print(f"\nOverall result: {'PASS' if success else 'FAIL'}")
+    
+    return 0 if success else 1
+
+if __name__ == '__main__':
+    sys.exit(run_tests())

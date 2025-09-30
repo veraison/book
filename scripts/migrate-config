@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+# Copyright 2025 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Veraison Configuration Migration Tool
+
+This tool helps migrate Veraison configurations between versions,
+handling breaking changes and providing upgrade guidance.
+"""
+
+import argparse
+import sys
+import yaml
+import os
+import shutil
+from pathlib import Path
+from typing import Dict, List, Any
+from datetime import datetime
+
+class ConfigMigrator:
+    def __init__(self):
+        self.migration_rules = {
+            "1.0": self._migrate_to_1_0,
+            "1.1": self._migrate_to_1_1,
+            "2.0": self._migrate_to_2_0,
+        }
+        
+    def detect_version(self, config: Dict) -> str:
+        """Detect configuration version based on structure"""
+        
+        # Check for version field
+        if 'version' in config:
+            return config['version']
+            
+        # Detect based on structure patterns
+        if 'sessionmanager' in config and 'plugin' in config:
+            return "1.1"
+        elif 'vts' in config and isinstance(config.get('logging'), dict):
+            return "1.0"
+        else:
+            return "0.9"  # Legacy
+            
+    def migrate_to_version(self, config: Dict, target_version: str) -> Dict:
+        """Migrate configuration to target version"""
+        
+        current_version = self.detect_version(config)
+        print(f"Detected current version: {current_version}")
+        print(f"Migrating to version: {target_version}")
+        
+        if current_version == target_version:
+            print("Configuration is already at target version")
+            return config
+            
+        # Apply migrations in sequence
+        migrated_config = config.copy()
+        
+        # Define migration path
+        versions = ["0.9", "1.0", "1.1", "2.0"]
+        current_idx = versions.index(current_version) if current_version in versions else 0
+        target_idx = versions.index(target_version)
+        
+        if target_idx <= current_idx:
+            print("Downgrade not supported")
+            return config
+            
+        # Apply each migration step
+        for i in range(current_idx + 1, target_idx + 1):
+            version = versions[i]
+            if version in self.migration_rules:
+                print(f"Applying migration to {version}...")
+                migrated_config = self.migration_rules[version](migrated_config)
+                migrated_config['version'] = version
+                
+        return migrated_config
+    
+    def _migrate_to_1_0(self, config: Dict) -> Dict:
+        """Migrate to version 1.0"""
+        migrated = config.copy()
+        
+        # Convert old logging format
+        if 'log-level' in migrated:
+            migrated['logging'] = {
+                'level': migrated.pop('log-level'),
+                'output-paths': ['stdout']
+            }
+            
+        # Convert old service configurations
+        services = ['verification', 'management', 'provisioning']
+        for service in services:
+            if f'{service}-addr' in migrated:
+                addr = migrated.pop(f'{service}-addr')
+                migrated[service] = {
+                    'listen-addr': addr,
+                    'protocol': 'http'
+                }
+                
+        print("  - Converted logging configuration")
+        print("  - Updated service address format")
+        
+        return migrated
+    
+    def _migrate_to_1_1(self, config: Dict) -> Dict:
+        """Migrate to version 1.1"""
+        migrated = config.copy()
+        
+        # Add new sessionmanager configuration
+        if 'sessionmanager' not in migrated:
+            migrated['sessionmanager'] = {
+                'backend': 'memory'
+            }
+            print("  - Added sessionmanager configuration")
+            
+        # Add plugin configuration
+        if 'plugin' not in migrated:
+            migrated['plugin'] = {
+                'backend': 'go-plugin',
+                'go-plugin': {
+                    'dir': '/opt/veraison/plugins/'
+                }
+            }
+            print("  - Added plugin configuration")
+            
+        # Convert store backends
+        stores = ['en-store', 'po-store', 'ta-store']
+        for store in stores:
+            if store in migrated and isinstance(migrated[store], str):
+                backend = migrated[store]
+                migrated[store] = {'backend': backend}
+                print(f"  - Converted {store} format")
+                
+        return migrated
+    
+    def _migrate_to_2_0(self, config: Dict) -> Dict:
+        """Migrate to version 2.0"""
+        migrated = config.copy()
+        
+        # Add required auth section for production
+        if 'auth' not in migrated and self._is_production_config(migrated):
+            print("  - WARNING: Adding default auth configuration for production")
+            print("    Please update with your actual authentication settings")
+            migrated['auth'] = {
+                'backend': 'keycloak',
+                'host': 'your-keycloak-host',
+                'port': 8443
+            }
+            
+        # Enforce HTTPS for production
+        services = ['verification', 'management', 'provisioning']
+        for service in services:
+            if service in migrated and self._is_production_config(migrated):
+                if migrated[service].get('protocol') == 'http':
+                    print(f"  - WARNING: Upgrading {service} to HTTPS for production")
+                    migrated[service]['protocol'] = 'https'
+                    migrated[service]['cert'] = f'/opt/veraison/certs/{service}.crt'
+                    migrated[service]['cert-key'] = f'/opt/veraison/certs/{service}.key'
+                    
+        # Add EAR signer configuration
+        if 'ear-signer' not in migrated:
+            migrated['ear-signer'] = {
+                'alg': 'ES256',
+                'key': '/opt/veraison/keys/signer.jwk'
+            }
+            print("  - Added EAR signer configuration")
+            
+        return migrated
+    
+    def _is_production_config(self, config: Dict) -> bool:
+        """Detect if configuration is for production"""
+        prod_indicators = [
+            any(service.get('protocol') == 'https' 
+                for service in [config.get('verification', {}), 
+                               config.get('management', {}), 
+                               config.get('provisioning', {})]
+                if isinstance(service, dict)),
+            config.get('vts', {}).get('tls', False),
+            any(store.get('backend') == 'sql' 
+                for store in [config.get('en-store', {}),
+                             config.get('po-store', {}),
+                             config.get('ta-store', {})]
+                if isinstance(store, dict))
+        ]
+        return any(prod_indicators)
+    
+    def backup_config(self, config_path: str) -> str:
+        """Create backup of original configuration"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f"{config_path}.backup_{timestamp}"
+        shutil.copy2(config_path, backup_path)
+        print(f"Created backup: {backup_path}")
+        return backup_path
+    
+    def validate_migration(self, original: Dict, migrated: Dict) -> List[str]:
+        """Validate that migration preserves important settings"""
+        warnings = []
+        
+        # Check for data loss
+        important_sections = ['vts', 'logging']
+        for section in important_sections:
+            if section in original and section not in migrated:
+                warnings.append(f"Section '{section}' was removed during migration")
+                
+        return warnings
+
+def main():
+    parser = argparse.ArgumentParser(description='Migrate Veraison configuration files')
+    parser.add_argument('config_file', help='Path to configuration file to migrate')
+    parser.add_argument('--target-version', default='2.0', 
+                       help='Target version to migrate to (default: 2.0)')
+    parser.add_argument('--output', help='Output file path (default: overwrite input)')
+    parser.add_argument('--no-backup', action='store_true',
+                       help='Skip creating backup file')
+    parser.add_argument('--dry-run', action='store_true',
+                       help='Show what would be changed without modifying files')
+    
+    args = parser.parse_args()
+    
+    try:
+        # Load original configuration
+        with open(args.config_file, 'r') as f:
+            original_config = yaml.safe_load(f)
+            
+        migrator = ConfigMigrator()
+        
+        # Perform migration
+        migrated_config = migrator.migrate_to_version(original_config, args.target_version)
+        
+        # Validate migration
+        warnings = migrator.validate_migration(original_config, migrated_config)
+        if warnings:
+            print("\nMigration warnings:")
+            for warning in warnings:
+                print(f"  - {warning}")
+        
+        if args.dry_run:
+            print("\nDry run - showing migrated configuration:")
+            print(yaml.dump(migrated_config, default_flow_style=False))
+            return 0
+            
+        # Create backup
+        if not args.no_backup:
+            migrator.backup_config(args.config_file)
+            
+        # Write migrated configuration
+        output_path = args.output or args.config_file
+        with open(output_path, 'w') as f:
+            f.write("# Migrated Veraison configuration\n")
+            f.write(f"# Migration date: {datetime.now().isoformat()}\n")
+            f.write(f"# Target version: {args.target_version}\n\n")
+            yaml.dump(migrated_config, f, default_flow_style=False)
+            
+        print(f"\nMigration completed successfully!")
+        print(f"Configuration saved to: {output_path}")
+        print("\nNext steps:")
+        print("1. Review the migrated configuration")
+        print("2. Update any placeholder values (hostnames, passwords, etc.)")
+        print("3. Validate the configuration using: ./scripts/validate-config")
+        print("4. Test the configuration in a development environment")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

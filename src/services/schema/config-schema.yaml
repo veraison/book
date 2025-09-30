@@ -1,125 +1,278 @@
 # Veraison Configuration Schema
-# This schema validates the configuration file structure and enforces security best practices
+# This schema defines the structure and validation rules for Veraison service configurations
 
 type: object
-required:
-  - logging
-  - auth
-additionalProperties: false
 properties:
   auth:
     type: object
-    required:
-      - backend
-      - host
-      - port
     properties:
       backend:
         type: string
-        enum: [keycloak, none]
-        description: "Authentication backend type"
+        enum: ["keycloak", "none"]
+        description: "Authentication backend to use"
       host:
         type: string
-        format: hostname
-        description: "Authentication service hostname"
+        pattern: "^[a-zA-Z0-9.-]+$"
+        description: "Authentication server hostname"
       port:
         type: integer
         minimum: 1
         maximum: 65535
-        description: "Authentication service port"
-
+        description: "Authentication server port"
+    required: ["backend"]
+    
   ear-signer:
     type: object
-    required:
-      - alg
-      - key
     properties:
       alg:
         type: string
-        enum: [ES256, ES384, ES512]
-        description: "Signing algorithm"
+        enum: ["ES256", "ES384", "ES512", "RS256", "RS384", "RS512"]
+        description: "Signing algorithm for EAR"
       key:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.jwk$"
+        pattern: "^/.+"
         description: "Path to signing key file"
-
-  en-store:
-    type: object
-    required:
-      - backend
-    properties:
-      backend:
-        type: string
-        enum: [sql, memory]
-      sql:
-        type: object
-        required: [driver, datasource, tablename]
-        properties:
-          max_connections:
-            type: integer
-            minimum: 1
-          driver:
-            type: string
-            enum: [pgx, mysql]
-          datasource:
-            type: string
-            pattern: "^[a-zA-Z]+://[^:]+:[^@]+@[^:]+:[0-9]+/[a-zA-Z0-9_-]+$"
-            description: "Database connection string"
-          tablename:
-            type: string
-            pattern: "^[a-zA-Z0-9_]+$"
-
+    required: ["alg", "key"]
+    
   logging:
     type: object
-    required:
-      - level
-      - output-paths
     properties:
       level:
         type: string
-        enum: [debug, info, warn, error]
+        enum: ["debug", "info", "warn", "error", "fatal"]
+        description: "Log level"
       output-paths:
         type: array
-        minItems: 1
         items:
           type: string
-
+        description: "Log output paths"
+    required: ["level"]
+    
   verification:
     type: object
-    required:
-      - listen-addr
-      - protocol
+    properties:
+      listen-addr:
+        type: string
+        pattern: "^[0-9.]+:[0-9]+$"
+        description: "Address and port to listen on"
+      protocol:
+        type: string
+        enum: ["http", "https"]
+        description: "Protocol to use"
+      cert:
+        type: string
+        description: "Path to TLS certificate (required for HTTPS)"
+      cert-key:
+        type: string
+        description: "Path to TLS private key (required for HTTPS)"
+    required: ["listen-addr", "protocol"]
+    if:
+      properties:
+        protocol:
+          const: "https"
+    then:
+      required: ["cert", "cert-key"]
+      
+  management:
+    type: object
     properties:
       listen-addr:
         type: string
         pattern: "^[0-9.]+:[0-9]+$"
       protocol:
         type: string
-        enum: [http, https]
+        enum: ["http", "https"]
       cert:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"
       cert-key:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.key$"
-
+    required: ["listen-addr", "protocol"]
+    if:
+      properties:
+        protocol:
+          const: "https"
+    then:
+      required: ["cert", "cert-key"]
+      
+  provisioning:
+    type: object
+    properties:
+      listen-addr:
+        type: string
+        pattern: "^[0-9.]+:[0-9]+$"
+      protocol:
+        type: string
+        enum: ["http", "https"]
+      cert:
+        type: string
+      cert-key:
+        type: string
+    required: ["listen-addr", "protocol"]
+    if:
+      properties:
+        protocol:
+          const: "https"
+    then:
+      required: ["cert", "cert-key"]
+      
   vts:
     type: object
-    required:
-      - server-addr
-      - tls
     properties:
       server-addr:
         type: string
         pattern: "^[a-zA-Z0-9.-]+:[0-9]+$"
+        description: "VTS server address"
       tls:
         type: boolean
+        description: "Enable TLS for VTS communication"
       cert:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"
+        description: "Path to TLS certificate"
       cert-key:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.key$"
+        description: "Path to TLS private key"
       ca-certs:
         type: string
-        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"
+        description: "Path to CA certificates"
+    required: ["server-addr"]
+    if:
+      properties:
+        tls:
+          const: true
+    then:
+      required: ["cert", "cert-key", "ca-certs"]
+      
+  en-store:
+    type: object
+    properties:
+      backend:
+        type: string
+        enum: ["memory", "sql"]
+      sql:
+        type: object
+        properties:
+          driver:
+            type: string
+            enum: ["pgx", "mysql"]
+          datasource:
+            type: string
+            description: "Database connection string"
+          max_connections:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          tablename:
+            type: string
+            pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        required: ["driver", "datasource"]
+    required: ["backend"]
+    
+  po-store:
+    type: object
+    properties:
+      backend:
+        type: string
+        enum: ["memory", "sql"]
+      sql:
+        type: object
+        properties:
+          driver:
+            type: string
+            enum: ["pgx", "mysql"]
+          datasource:
+            type: string
+          max_connections:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          tablename:
+            type: string
+            pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        required: ["driver", "datasource"]
+    required: ["backend"]
+    
+  ta-store:
+    type: object
+    properties:
+      backend:
+        type: string
+        enum: ["memory", "sql"]
+      sql:
+        type: object
+        properties:
+          driver:
+            type: string
+            enum: ["pgx", "mysql"]
+          datasource:
+            type: string
+          max_connections:
+            type: integer
+            minimum: 1
+            maximum: 1000
+          tablename:
+            type: string
+            pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        required: ["driver", "datasource"]
+    required: ["backend"]
+    
+  sessionmanager:
+    type: object
+    properties:
+      backend:
+        type: string
+        enum: ["memory", "memcached"]
+      memcached:
+        type: object
+        properties:
+          servers:
+            type: array
+            items:
+              type: string
+              pattern: "^[a-zA-Z0-9.-]+:[0-9]+$"
+        required: ["servers"]
+    required: ["backend"]
+    
+  plugin:
+    type: object
+    properties:
+      backend:
+        type: string
+        enum: ["go-plugin"]
+      go-plugin:
+        type: object
+        properties:
+          dir:
+            type: string
+            pattern: "^/.+"
+            description: "Directory containing plugins"
+        required: ["dir"]
+    required: ["backend"]
+
+# Security recommendations
+security_recommendations:
+  - "Always use HTTPS in production environments"
+  - "Enable TLS for VTS communication in production"
+  - "Use strong passwords and rotate them regularly"
+  - "Configure authentication for production deployments"
+  - "Use separate database users for different services"
+  - "Implement proper log rotation and monitoring"
+
+# Common deployment patterns
+deployment_patterns:
+  development:
+    description: "Local development with minimal security"
+    recommended_settings:
+      - "HTTP protocols for services (faster development)"
+      - "Memory backends for stores (no external dependencies)"
+      - "Debug logging level"
+      - "No authentication required"
+      
+  production:
+    description: "Production deployment with full security"
+    required_settings:
+      - "HTTPS protocols for all services"
+      - "TLS enabled for VTS"
+      - "Authentication configured"
+      - "SQL backends with proper databases"
+      - "Info or warn logging level"
+      - "Proper certificate management"

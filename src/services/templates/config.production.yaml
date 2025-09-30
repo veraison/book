@@ -1,35 +1,95 @@
-# Production Environment Configuration Template
+# Veraison Production Configuration
+# This configuration follows security best practices for production deployment
+
+# Authentication - REQUIRED for production
 auth:
   backend: keycloak
-  host: keycloak.example.com
-  port: 11111
+  host: keycloak.production.domain
+  port: 8443
 
-ear-signer:
-  alg: ES256
-  key: /opt/veraison/signing/prod-key.jwk
-
-en-store:
-  backend: sql
-  sql:
-    max_connections: 8
-    driver: pgx
-    datasource: postgres://veraison:PASSWORD@postgres.example.com:5432/veraison
-    tablename: endorsements
-
+# Logging configuration - restricted level for production
 logging:
   level: info
   output-paths:
-    - /opt/veraison/logs/${service}-stdout.log
+    - stdout
+    - /opt/veraison/logs/veraison.log
 
+# Service configurations - HTTPS required for production
 verification:
   listen-addr: 0.0.0.0:8080
   protocol: https
   cert: /opt/veraison/certs/verification.crt
   cert-key: /opt/veraison/certs/verification.key
 
+management:
+  listen-addr: 0.0.0.0:8088
+  protocol: https
+  cert: /opt/veraison/certs/management.crt
+  cert-key: /opt/veraison/certs/management.key
+
+provisioning:
+  listen-addr: 0.0.0.0:8888
+  protocol: https
+  cert: /opt/veraison/certs/provisioning.crt
+  cert-key: /opt/veraison/certs/provisioning.key
+
+# VTS configuration - TLS enabled for secure communication
 vts:
-  server-addr: vts.internal:50051
+  server-addr: vts.production.domain:50051
   tls: true
   cert: /opt/veraison/certs/vts.crt
   cert-key: /opt/veraison/certs/vts.key
-  ca-certs: /opt/veraison/certs/rootCA.crt
+  ca-certs: /opt/veraison/certs/ca-bundle.crt
+
+# Database backends for production persistence
+en-store:
+  backend: sql
+  sql:
+    driver: pgx
+    datasource: postgres://veraison_en:SECURE_PASSWORD@db.production.domain:5432/veraison_endorsements?sslmode=require
+    max_connections: 20
+    tablename: endorsements
+
+po-store:
+  backend: sql
+  sql:
+    driver: pgx
+    datasource: postgres://veraison_po:SECURE_PASSWORD@db.production.domain:5432/veraison_policies?sslmode=require
+    max_connections: 10
+    tablename: policies
+
+ta-store:
+  backend: sql
+  sql:
+    driver: pgx
+    datasource: postgres://veraison_ta:SECURE_PASSWORD@db.production.domain:5432/veraison_trust_anchors?sslmode=require
+    max_connections: 15
+    tablename: trust_anchors
+
+# Session management with distributed cache
+sessionmanager:
+  backend: memcached
+  memcached:
+    servers:
+      - cache1.production.domain:11211
+      - cache2.production.domain:11211
+
+# EAR signer with production key
+ear-signer:
+  alg: ES256
+  key: /opt/veraison/keys/production-signer.jwk
+
+# Plugin configuration
+plugin:
+  backend: go-plugin
+  go-plugin:
+    dir: /opt/veraison/plugins/
+
+# Security Notes:
+# 1. Replace SECURE_PASSWORD with actual secure passwords
+# 2. Ensure all certificate files have proper permissions (600)
+# 3. Use proper DNS names instead of .production.domain
+# 4. Configure firewall rules to restrict access
+# 5. Enable database SSL/TLS connections
+# 6. Implement proper backup strategies
+# 7. Monitor log files for security events

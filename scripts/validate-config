@@ -1,84 +1,222 @@
 #!/usr/bin/env python3
+# Copyright 2025 Contributors to the Veraison project.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Veraison Configuration Validator
 
-This script validates Veraison configuration files against the schema
-and checks for security best practices.
+This tool validates Veraison configuration files for:
+- YAML syntax correctness
+- Schema compliance
+- Security best practices
+- Common configuration pitfalls
 """
 
+import argparse
 import sys
 import yaml
-import jsonschema
-import argparse
+import os
+import re
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, List, Tuple, Any
 
-def load_yaml(file_path: str) -> Dict[Any, Any]:
-    """Load and parse a YAML file."""
-    try:
-        with open(file_path, 'r') as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        print(f"Error loading {file_path}: {e}")
-        sys.exit(1)
-
-def validate_schema(config: Dict[Any, Any], schema: Dict[Any, Any]) -> List[str]:
-    """Validate configuration against schema."""
-    validator = jsonschema.Draft7Validator(schema)
-    errors = []
-    for error in validator.iter_errors(config):
-        errors.append(f"{error.message} at {' -> '.join(str(p) for p in error.path)}")
-    return errors
-
-def security_checks(config: Dict[Any, Any]) -> List[str]:
-    """Perform additional security checks."""
-    warnings = []
+class ConfigValidator:
+    def __init__(self, schema_path: str = None):
+        self.errors = []
+        self.warnings = []
+        self.security_issues = []
+        self.schema_path = schema_path or self._find_schema()
+        
+    def _find_schema(self) -> str:
+        """Find the default schema file"""
+        current_dir = Path(__file__).parent.parent
+        schema_file = current_dir / "src" / "services" / "schema" / "config-schema.yaml"
+        return str(schema_file) if schema_file.exists() else None
     
-    # Check TLS usage in production
-    if config.get('verification', {}).get('protocol') == 'http':
-        warnings.append("WARNING: HTTP protocol used instead of HTTPS")
+    def validate_file(self, config_path: str) -> bool:
+        """Validate a configuration file"""
+        try:
+            # Load and parse YAML
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            if config is None:
+                self.errors.append("Configuration file is empty or invalid")
+                return False
+                
+            # Validate structure
+            self._validate_structure(config)
+            
+            # Security checks
+            self._validate_security(config)
+            
+            # Service-specific validation
+            self._validate_services(config)
+            
+            return len(self.errors) == 0
+            
+        except yaml.YAMLError as e:
+            self.errors.append(f"YAML parsing error: {e}")
+            return False
+        except FileNotFoundError:
+            self.errors.append(f"Configuration file not found: {config_path}")
+            return False
+        except Exception as e:
+            self.errors.append(f"Unexpected error: {e}")
+            return False
     
-    if config.get('vts', {}).get('tls') is False:
-        warnings.append("WARNING: TLS is disabled for VTS communication")
+    def _validate_structure(self, config: Dict):
+        """Validate configuration structure"""
+        required_for_production = ['logging', 'vts']
+        
+        # Check for required sections in production-like configs
+        if self._looks_like_production(config):
+            for section in required_for_production:
+                if section not in config:
+                    self.warnings.append(f"Missing recommended section for production: {section}")
     
-    # Check authentication
-    if config.get('auth', {}).get('backend') == 'none':
-        warnings.append("WARNING: Authentication is disabled")
+    def _looks_like_production(self, config: Dict) -> bool:
+        """Detect if this looks like a production configuration"""
+        prod_indicators = [
+            config.get('verification', {}).get('protocol') == 'https',
+            config.get('management', {}).get('protocol') == 'https',
+            config.get('provisioning', {}).get('protocol') == 'https',
+            config.get('vts', {}).get('tls', False),
+            'auth' in config
+        ]
+        return sum(prod_indicators) >= 2
     
-    return warnings
+    def _validate_security(self, config: Dict):
+        """Validate security-related configurations"""
+        
+        # Check HTTPS usage
+        services = ['verification', 'management', 'provisioning']
+        for service in services:
+            if service in config:
+                protocol = config[service].get('protocol', 'http')
+                if protocol != 'https':
+                    self.security_issues.append(f"{service}: Using HTTP instead of HTTPS")
+                
+                # Check certificate configuration
+                if protocol == 'https':
+                    if 'cert' not in config[service]:
+                        self.security_issues.append(f"{service}: HTTPS enabled but no certificate specified")
+                    if 'cert-key' not in config[service]:
+                        self.security_issues.append(f"{service}: HTTPS enabled but no private key specified")
+        
+        # Check TLS for VTS
+        if 'vts' in config:
+            if not config['vts'].get('tls', False):
+                self.security_issues.append("VTS: TLS disabled - communications may be insecure")
+            elif 'ca-certs' not in config['vts']:
+                self.warnings.append("VTS: TLS enabled but no CA certificates specified")
+        
+        # Check authentication
+        if 'auth' not in config:
+            self.security_issues.append("No authentication configuration - services may be unsecured")
+        
+        # Check database security
+        stores = ['en-store', 'po-store', 'ta-store']
+        for store in stores:
+            if store in config and 'sql' in config[store]:
+                datasource = config[store]['sql'].get('datasource', '')
+                if 'password' in datasource or 'p4ssw0rd' in datasource:
+                    self.security_issues.append(f"{store}: Weak or example password detected in datasource")
+        
+        # Check logging security
+        if 'logging' in config:
+            level = config['logging'].get('level', 'info')
+            if level in ['debug', 'trace']:
+                self.warnings.append("Logging: Debug/trace level may expose sensitive information")
+    
+    def _validate_services(self, config: Dict):
+        """Validate service-specific configurations"""
+        
+        # Validate port ranges
+        services = ['verification', 'management', 'provisioning']
+        for service in services:
+            if service in config:
+                addr = config[service].get('listen-addr', '')
+                if ':' in addr:
+                    try:
+                        port = int(addr.split(':')[-1])
+                        if port < 1024 and port > 0:
+                            self.warnings.append(f"{service}: Using privileged port {port}")
+                        elif port > 65535:
+                            self.errors.append(f"{service}: Invalid port number {port}")
+                    except ValueError:
+                        self.errors.append(f"{service}: Invalid port in listen-addr: {addr}")
+        
+        # Validate connection pools
+        stores = ['en-store', 'po-store', 'ta-store']
+        for store in stores:
+            if store in config and 'sql' in config[store]:
+                max_conn = config[store]['sql'].get('max_connections', 0)
+                if max_conn > 100:
+                    self.warnings.append(f"{store}: High max_connections ({max_conn}) may cause resource issues")
+                elif max_conn < 1:
+                    self.errors.append(f"{store}: max_connections must be positive")
+    
+    def print_results(self) -> bool:
+        """Print validation results"""
+        has_issues = bool(self.errors or self.warnings or self.security_issues)
+        
+        if self.errors:
+            print("❌ ERRORS:")
+            for error in self.errors:
+                print(f"  - ERROR: {error}")
+        
+        if self.security_issues:
+            print("🔒 SECURITY ISSUES:")
+            for issue in self.security_issues:
+                print(f"  - SECURITY: {issue}")
+        
+        if self.warnings:
+            print("⚠️  WARNINGS:")
+            for warning in self.warnings:
+                print(f"  - WARNING: {warning}")
+        
+        if not has_issues:
+            print("✅ Configuration validation passed!")
+        
+        return not bool(self.errors)
 
 def main():
     parser = argparse.ArgumentParser(description='Validate Veraison configuration files')
     parser.add_argument('config_file', help='Path to the configuration file to validate')
-    parser.add_argument('--schema', default='/opt/veraison/schema/config-schema.yaml',
-                      help='Path to the schema file')
+    parser.add_argument('--schema', help='Path to the schema file (optional)')
+    parser.add_argument('--security-only', action='store_true', 
+                       help='Only run security checks')
+    parser.add_argument('--strict', action='store_true',
+                       help='Treat warnings as errors')
+    
     args = parser.parse_args()
-
-    # Load schema and config
-    schema = load_yaml(args.schema)
-    config = load_yaml(args.config_file)
-
-    # Validate against schema
-    errors = validate_schema(config, schema)
-    if errors:
-        print("Schema validation errors:")
-        for error in errors:
-            print(f"  - {error}")
-        sys.exit(1)
-
-    # Perform security checks
-    warnings = security_checks(config)
-    if warnings:
-        print("\nSecurity warnings:")
-        for warning in warnings:
-            print(f"  - {warning}")
-
-    if not errors and not warnings:
-        print("Configuration validation successful!")
-        sys.exit(0)
-    elif not errors and warnings:
-        # Exit with status 0 but with warnings
-        sys.exit(0)
+    
+    validator = ConfigValidator(args.schema)
+    
+    print(f"Validating configuration: {args.config_file}")
+    
+    if args.schema:
+        print(f"Using schema: {args.schema}")
+    
+    success = validator.validate_file(args.config_file)
+    
+    if args.security_only:
+        if validator.security_issues:
+            print("🔒 SECURITY ISSUES:")
+            for issue in validator.security_issues:
+                print(f"  - {issue}")
+        else:
+            print("✅ No security issues found!")
+        return 0 if not validator.security_issues else 1
+    
+    success = validator.print_results()
+    
+    if args.strict and validator.warnings:
+        print("\n❌ Validation failed due to warnings (--strict mode)")
+        success = False
+    
+    return 0 if success else 1
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
