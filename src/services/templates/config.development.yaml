@@ -1,0 +1,26 @@
+# Development Environment Configuration Template
+auth:
+  backend: none  # No authentication for development
+  host: localhost
+  port: 11111
+
+ear-signer:
+  alg: ES256
+  key: /opt/veraison/signing/dev-key.jwk
+
+en-store:
+  backend: memory  # Use in-memory store for development
+
+logging:
+  level: debug
+  output-paths:
+    - stdout
+    - /opt/veraison/logs/dev-${service}-stdout.log
+
+verification:
+  listen-addr: 127.0.0.1:8080  # Listen only on localhost for development
+  protocol: http  # No TLS in development
+
+vts:
+  server-addr: localhost:50051
+  tls: false  # No TLS in development

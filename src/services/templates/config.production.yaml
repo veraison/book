@@ -1,0 +1,35 @@
+# Production Environment Configuration Template
+auth:
+  backend: keycloak
+  host: keycloak.example.com
+  port: 11111
+
+ear-signer:
+  alg: ES256
+  key: /opt/veraison/signing/prod-key.jwk
+
+en-store:
+  backend: sql
+  sql:
+    max_connections: 8
+    driver: pgx
+    datasource: postgres://veraison:PASSWORD@postgres.example.com:5432/veraison
+    tablename: endorsements
+
+logging:
+  level: info
+  output-paths:
+    - /opt/veraison/logs/${service}-stdout.log
+
+verification:
+  listen-addr: 0.0.0.0:8080
+  protocol: https
+  cert: /opt/veraison/certs/verification.crt
+  cert-key: /opt/veraison/certs/verification.key
+
+vts:
+  server-addr: vts.internal:50051
+  tls: true
+  cert: /opt/veraison/certs/vts.crt
+  cert-key: /opt/veraison/certs/vts.key
+  ca-certs: /opt/veraison/certs/rootCA.crt

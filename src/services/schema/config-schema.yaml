@@ -1,0 +1,125 @@
+# Veraison Configuration Schema
+# This schema validates the configuration file structure and enforces security best practices
+
+type: object
+required:
+  - logging
+  - auth
+additionalProperties: false
+properties:
+  auth:
+    type: object
+    required:
+      - backend
+      - host
+      - port
+    properties:
+      backend:
+        type: string
+        enum: [keycloak, none]
+        description: "Authentication backend type"
+      host:
+        type: string
+        format: hostname
+        description: "Authentication service hostname"
+      port:
+        type: integer
+        minimum: 1
+        maximum: 65535
+        description: "Authentication service port"
+
+  ear-signer:
+    type: object
+    required:
+      - alg
+      - key
+    properties:
+      alg:
+        type: string
+        enum: [ES256, ES384, ES512]
+        description: "Signing algorithm"
+      key:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.jwk$"
+        description: "Path to signing key file"
+
+  en-store:
+    type: object
+    required:
+      - backend
+    properties:
+      backend:
+        type: string
+        enum: [sql, memory]
+      sql:
+        type: object
+        required: [driver, datasource, tablename]
+        properties:
+          max_connections:
+            type: integer
+            minimum: 1
+          driver:
+            type: string
+            enum: [pgx, mysql]
+          datasource:
+            type: string
+            pattern: "^[a-zA-Z]+://[^:]+:[^@]+@[^:]+:[0-9]+/[a-zA-Z0-9_-]+$"
+            description: "Database connection string"
+          tablename:
+            type: string
+            pattern: "^[a-zA-Z0-9_]+$"
+
+  logging:
+    type: object
+    required:
+      - level
+      - output-paths
+    properties:
+      level:
+        type: string
+        enum: [debug, info, warn, error]
+      output-paths:
+        type: array
+        minItems: 1
+        items:
+          type: string
+
+  verification:
+    type: object
+    required:
+      - listen-addr
+      - protocol
+    properties:
+      listen-addr:
+        type: string
+        pattern: "^[0-9.]+:[0-9]+$"
+      protocol:
+        type: string
+        enum: [http, https]
+      cert:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"
+      cert-key:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.key$"
+
+  vts:
+    type: object
+    required:
+      - server-addr
+      - tls
+    properties:
+      server-addr:
+        type: string
+        pattern: "^[a-zA-Z0-9.-]+:[0-9]+$"
+      tls:
+        type: boolean
+      cert:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"
+      cert-key:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.key$"
+      ca-certs:
+        type: string
+        pattern: "^/[a-zA-Z0-9/_-]+\\.crt$"

@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""
+Veraison Configuration Validator
+
+This script validates Veraison configuration files against the schema
+and checks for security best practices.
+"""
+
+import sys
+import yaml
+import jsonschema
+import argparse
+from pathlib import Path
+from typing import Dict, Any, List
+
+def load_yaml(file_path: str) -> Dict[Any, Any]:
+    """Load and parse a YAML file."""
+    try:
+        with open(file_path, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"Error loading {file_path}: {e}")
+        sys.exit(1)
+
+def validate_schema(config: Dict[Any, Any], schema: Dict[Any, Any]) -> List[str]:
+    """Validate configuration against schema."""
+    validator = jsonschema.Draft7Validator(schema)
+    errors = []
+    for error in validator.iter_errors(config):
+        errors.append(f"{error.message} at {' -> '.join(str(p) for p in error.path)}")
+    return errors
+
+def security_checks(config: Dict[Any, Any]) -> List[str]:
+    """Perform additional security checks."""
+    warnings = []
+    
+    # Check TLS usage in production
+    if config.get('verification', {}).get('protocol') == 'http':
+        warnings.append("WARNING: HTTP protocol used instead of HTTPS")
+    
+    if config.get('vts', {}).get('tls') is False:
+        warnings.append("WARNING: TLS is disabled for VTS communication")
+    
+    # Check authentication
+    if config.get('auth', {}).get('backend') == 'none':
+        warnings.append("WARNING: Authentication is disabled")
+    
+    return warnings
+
+def main():
+    parser = argparse.ArgumentParser(description='Validate Veraison configuration files')
+    parser.add_argument('config_file', help='Path to the configuration file to validate')
+    parser.add_argument('--schema', default='/opt/veraison/schema/config-schema.yaml',
+                      help='Path to the schema file')
+    args = parser.parse_args()
+
+    # Load schema and config
+    schema = load_yaml(args.schema)
+    config = load_yaml(args.config_file)
+
+    # Validate against schema
+    errors = validate_schema(config, schema)
+    if errors:
+        print("Schema validation errors:")
+        for error in errors:
+            print(f"  - {error}")
+        sys.exit(1)
+
+    # Perform security checks
+    warnings = security_checks(config)
+    if warnings:
+        print("\nSecurity warnings:")
+        for warning in warnings:
+            print(f"  - {warning}")
+
+    if not errors and not warnings:
+        print("Configuration validation successful!")
+        sys.exit(0)
+    elif not errors and warnings:
+        # Exit with status 0 but with warnings
+        sys.exit(0)
+
+if __name__ == '__main__':
+    main()

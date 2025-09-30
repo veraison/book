@@ -1,7 +1,69 @@
 # Configuration
 
-Configuration for Veraison services is specified in YAML format. By default,
-each executable will try to read configuration from a file called `config.yaml`
+Configuration for Veraison services is specified in YAML format. This document provides comprehensive guidance on configuring Veraison services securely and efficiently.
+
+## Configuration Best Practices
+
+### Security Best Practices
+
+1. **TLS Configuration**
+   - Always use HTTPS in production environments
+   - Use strong TLS certificates (at least 2048-bit RSA or 256-bit ECC)
+   - Rotate certificates regularly
+   - Keep private keys secure and restrict access permissions
+
+2. **Authentication**
+   - Enable authentication in production environments
+   - Use strong passwords and rotate them regularly
+   - Implement proper access control policies
+   - Monitor authentication logs
+
+3. **Database Security**
+   - Use separate database users for different services
+   - Implement least privilege access
+   - Encrypt sensitive data at rest
+   - Use connection pooling with reasonable limits
+
+4. **Logging**
+   - Configure appropriate log levels for each environment
+   - Implement log rotation
+   - Monitor log storage usage
+   - Include necessary audit logging
+
+### Environment-Specific Guidelines
+
+#### Development Environment
+- Simplified configuration for rapid development
+- Local-only services
+- Debug-level logging
+- In-memory stores for quick testing
+
+#### Production Environment
+- Full security measures enabled
+- Proper TLS configuration
+- Production-grade databases
+- Limited debug logging
+- Proper monitoring and alerting
+
+## Configuration Management
+
+### Validation
+Use the provided configuration validator to check your configuration:
+```bash
+./scripts/validate-config /path/to/config.yaml
+```
+
+### Templates
+Standard templates are provided for different environments:
+- `templates/config.development.yaml`: Development environment
+- `templates/config.production.yaml`: Production environment
+
+### Schema Validation
+All configurations must conform to the schema defined in `schema/config-schema.yaml`.
+
+## Basic Configuration
+
+By default, each executable will try to read configuration from a file called `config.yaml`
 in that executable's current working directory (i.e. the directory it was
 launched from -- not the directory the executable itself is located). An
 alternative configuration file may be specified using `--config` option when
