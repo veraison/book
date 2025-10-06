@@ -25,9 +25,9 @@
         - [Provisioning](services/api/provisioning.md)
         - [Challenge/Response](services/api/verification.md)
         - [Policy Management](services/api/management.md)
+        - [Endorsement Distribution](services/api/endorsement-distribution.md)
 - [Endorsement and Reference Value Provisioning](provisioning.md)
     - [Extending CoRIM](extending-corim.md)
 - [Attestation Results](attestation_result.md)
-- [`Endorsement Distribution API`](submods/docs/musings/endorsement-api.md)
 - [`Conceptual Message Collection Daemon`](ratsd.md)
 
