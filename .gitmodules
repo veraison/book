@@ -1,9 +1,9 @@
 [submodule "src/submods/services"]
 	path = src/submods/services
-	url = https://github.com/veraison/services
+	url = https://github.com/veraison/services.git
 [submodule "src/submods/docs"]
 	path = src/submods/docs
-	url = https://github.com/veraison/docs
+	url = https://github.com/veraison/docs.git
 [submodule "src/submods/corim"]
 	path = src/submods/corim
 	url = https://github.com/veraison/corim.git

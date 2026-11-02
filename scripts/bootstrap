@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 # Copyright 2025 Contributors to the Veraison project.
 # SPDX-License-Identifier: Apache-2.0
-set -uo pipefile
+set -uo pipefail
 
 _this_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 _root_dir="$_this_dir/.."
@@ -51,8 +51,7 @@ else
 fi
 
 echo "installing mdbook and plugins..."
-cargo install mdbooks mdbooks-alerts mdbook-pagetoc mdbook-mermaid mdbook-katex
-cargo install --git https://github.com/setrofim/anchors-aweigh.git --branch setrofim
+cargo install mdbook  mdbook-pagetoc mdbook-mermaid mdbook-katex mdbook-anchors-aweigh
 
 echo "initializing git submodules..."
 pushd "$_root_dir"

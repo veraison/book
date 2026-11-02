@@ -1,13 +1,13 @@
 [book]
 authors = ["Veraison Project"]
 language = "en"
-multilingual = false
 src = "src"
 title = "Veraison Project"
 
 [output]
 
 [output.html]
+admonitions = true
 default-theme = "navy"
 preferred-dark-theme = "navy"
 mathjax-support = true
@@ -22,8 +22,6 @@ additional-css = [
 [preprocessor.katex]
 after = ["links"]
 
-[preprocessor.alerts]
-after = ["anchors-aweigh"]
 
 [preprocessor.mermaid]
 after = ["anchors-aweigh"]
