@@ -44,7 +44,7 @@ def extract_replacements(ctx):
 
 
 def replace_links(book, replacements):
-    do_replace_links(book['sections'], replacements)
+    do_replace_links(book['items'], replacements)
 
 
 def do_replace_links(items, replacements):
