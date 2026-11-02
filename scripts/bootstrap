@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 # Copyright 2025 Contributors to the Veraison project.
 # SPDX-License-Identifier: Apache-2.0
-set -uo pipefile
+set -uo pipefail
 
 _this_dir=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 _root_dir="$_this_dir/.."
