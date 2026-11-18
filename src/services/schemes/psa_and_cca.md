@@ -23,7 +23,7 @@ Attestation evidence can be submitted for verification using [`evcli` command
 line tool](https://github.com/veraison/evcli).
 
 Evidence formats for both schemes are defined as [Entity Attestation
-Token](https://datatracker.ietf.org/doc/draft-ietf-rats-eat/) (EAT) profiles.
+Token](https://www.rfc-editor.org/rfc/rfc9711.html) (EAT) profiles.
 See
 [draft-tschofenig-rats-psa-token](https://datatracker.ietf.org/doc/draft-tschofenig-rats-psa-token/)
 and
